@@ -1,3 +1,26 @@
+/*
+Theramin - ElctroPhysical Instrument
+
+This is a an electric instrument, which plays a note
+on a range between C4 to B4 according to a light sensor input.
+In addition, the note will be vibrated according to Two potentiometers input.
+One controls the vibrato's depth, the other controls the speed (delay between changes).
+
+The Circuit:
+  * Input: 
+      Potentiometer - A0 - Depth of vibrato. 
+      Potentiometer - A2 - Speed of vibrato.
+      LightSensor - A4 - Map light intesity to specifc note.
+  * Output:
+      Speaker - 9 - plays the note with vibrato.
+
+Video link: #LINK#
+
+Created By:
+  Gilad_Ram #305433260 
+  Tomer_Maimon #308301498
+  Alon_Shprung #203349048
+*/ 
 
 int vibratoDepthInput;
 int vibratoSpeedInput;
