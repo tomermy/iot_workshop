@@ -22,6 +22,7 @@ void loop() {
   double currentNote = mappedNoteValue;
 
   // Vibrato loops as long as playing the same note
+  // I think the while loop is redundant - is'nt it the same as lines 19 and 20 ?? 
   while (mappedNoteIndex == map(analogRead(A4), 0, 1023, 0, 12)){
     double vibratoMaxDepth = currentNote * 0.1;
     // note may go up and down up to half of the total vibrato depth
