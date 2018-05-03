@@ -1,4 +1,7 @@
+#include <IRremoteInt.h>
+#include <IRremote.h>
 #include <Adafruit_NeoPixel.h>
+
 const byte RED_LED_PIN=  12;
 const byte GREEN_LED_PIN=  13;
 const int BUTTON_PIN = 7;
@@ -12,9 +15,19 @@ long led_iteration_interval = 100;
 long current_time;
 long start_time;
 
+int currentState;
+const int startState = 0;
+const int inGameState = 1;
+const int stageCompleteState = 2;
+const int lossingState = 3;
+const int winnigState = 4;
+const int validationState = 5;
+const int finalLevel = 3;
+
 int currentLed = 0;
 int toStartAGame;
 int targetLed = 4;
+int currentGameLevel = 1;
 
 char* songToPlay;
 long songNextIterationTime;
@@ -24,6 +37,11 @@ uint32_t RED_COLOR = strip.Color(255, 0, 0);
 uint32_t GREEN_COLOR = strip.Color(0, 255, 0);
 uint32_t BLUE_COLOR = strip.Color(0, 0, 255); 
 uint32_t WHITE_COLOR = strip.Color(0, 0, 0); 
+
+// IR settings
+const int RECV_PIN = 11;
+IRrecv irrecv(RECV_PIN);
+decode_results results; 
 
 // StarWar song indicates a correct attempt
 char *songStarWars = "StarWars:d=4,o=5,b=45:32p,32f#,32f#,32f#,8b.,8f#.6,32e6,32d#6,32c#6,8b.6,16f#.6,32e6,32d#6,32c#6,8b.6,16f#.6,32e6,32d#6,32e6";
@@ -41,33 +59,56 @@ void setup() {
     strip.setPixelColor(targetLed, GREEN_COLOR); 
     strip.show();
     songToPlay = set_rtttl(songStarWars);
+    irrecv.enableIRIn(); // Start the receiver
+    currentState = startState;
 }
 
 void loop() {
+  
   current_time = millis();
   toStartAGame = digitalRead(BUTTON_PIN);
-  if(current_time - songNextIterationTime > 0){
-    if(toneIsUp){
-      noTone(SPEAKER_PIN);
-    }
-    if(!(*songToPlay)){
-      restSongVars();
-      songToPlay = set_rtttl(songStarWars);
-    }
-    playSongIteration(songToPlay);  
-  }
   
-  if( toStartAGame == HIGH){
-    digitalWrite(RED_LED_PIN, LOW);  
-    digitalWrite(GREEN_LED_PIN, HIGH);
-  }else{
-    digitalWrite(RED_LED_PIN, HIGH);  
-    digitalWrite(GREEN_LED_PIN, LOW);
-  }
-  if( abs(current_time - start_time) > led_iteration_interval){
-    ledStripIteration(BLUE_COLOR);
-    start_time = millis() + led_iteration_interval;
-    
+  switch(currentState) {
+    case startState:
+        if( toStartAGame == HIGH){
+          digitalWrite(RED_LED_PIN, LOW);  
+          digitalWrite(GREEN_LED_PIN, HIGH);
+          currentState = inGameState;
+        }else{
+          digitalWrite(RED_LED_PIN, HIGH);  
+          digitalWrite(GREEN_LED_PIN, LOW);
+        }
+        break;
+        
+     case inGameState:
+        // pressing any button on the remote.
+        if (irrecv.decode(&results)) {
+          digitalWrite(RED_LED_PIN, HIGH); 
+          irrecv.resume(); // Receive the next value
+          currentState = validationState;
+        }
+        //Song iterations
+        if(current_time - songNextIterationTime > 0){
+          if(toneIsUp){
+            noTone(SPEAKER_PIN);
+          }
+          if(!(*songToPlay)){
+            restSongVars();
+            songToPlay = set_rtttl(songStarWars);
+          }
+          playSongIteration(songToPlay);  
+        }
+        if( abs(current_time - start_time) > led_iteration_interval){
+          ledStripIteration(BLUE_COLOR);
+          start_time = millis() + led_iteration_interval; 
+        }              
+        break;
+      case validationState:
+        if (targetLed == currentLed - 1 && currentGameLevel < finalLevel){
+          currentGameLevel++;
+          currentState = startState;
+        }
+        break;
   }
 }
 
@@ -185,13 +226,8 @@ void playSongIteration(char *p){
     {
       num = (num * 10) + (*p++ - '0');
     }
-    Serial.println(num);
     if(num) duration = wholenote / num;
     else duration = wholenote / default_dur;  // we will need to check if we are a dotted note after
-    
-    Serial.write("d_d: ");Serial.println(default_dur);
-    Serial.write("d: ");Serial.println(duration);
-    Serial.write("w: ");Serial.println(wholenote );
     // first, get note duration, if available
     // now get the note
     note = 0;
@@ -259,7 +295,6 @@ void playSongIteration(char *p){
     if(note)
     {
       tone(SPEAKER_PIN, notes[(scale - 4) * 12 + note]);
-      Serial.write("duration"); Serial.println(duration);
       toneIsUp = true;
     }
     songNextIterationTime = millis() + duration;
