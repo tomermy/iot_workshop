@@ -1,303 +1,308 @@
+/*
+                The Lights Game - The Runner
+We choose to implement the light runner. The game is a one player game.
+The idea behind the game is to stop the runner on the target, in our
+case the blue led on the green led.The user can stop the runner by pressing
+any button on the remote. When the runner stays on the target,a winning level
+song is played, and all LEDs turn green.
+Otherwise, a losing level song is played, and all LEDs turn red.
+To win the game, the user must win all three levels. 
+Where, as levels escalate the running pace increases as well.
+
+* To implement a concurrence running we modified the tone and rttlplay libraries.
+* In the tone library we chnged the callback pin id, to enable IR and tone to work  
+* at the same sketch.
+* In the rttlplay (The one we used the last exercise as well), we have modified an iteration rttl player
+* to enable playing a song while the user plays the game.
+
+The Circuit:
+
+  * Input: 
+      Button - 7 - Start a game. 
+      IRReciverSensor - 11.
+      
+  * Output:
+      Speaker - 9 - play ringtones to indicate user level and state.
+      Red Led - 13 
+      Yello Led - 12
+      Green Led - 11
+      Leds strip - 3
+     
+Video link: https://www.youtube.com/watch?v=7J3qjh4jp44&feature=youtu.be
+
+Created By:
+  Tomer_Maimon #308301498
+  Alon_Shprung #203349048
+  Gilad_Ram #305433260 
+*/ 
+
+#include <RttlPlayer.h>
 #include <IRremoteInt.h>
 #include <IRremote.h>
 #include <Adafruit_NeoPixel.h>
 
-const byte RED_LED_PIN=  12;
-const byte GREEN_LED_PIN=  13;
+// CONST GPIO PINS
+const byte RED_LED_PIN =  12;
+const byte GREEN_LED_PIN =  13;
 const int BUTTON_PIN = 7;
-const byte SPEAKER_PIN= 4;
+const byte SPEAKER_PIN = 4;
 const byte LED_PIN = 3;
 const byte STRIP_LENGTH = 8;
+const int RECV_PIN = 11;
+const long winnig_ledIterationInterval = 50;
 
+//Setting a strip
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(60, LED_PIN, NEO_GRB + NEO_KHZ800);
+RttlPlayer player = RttlPlayer(SPEAKER_PIN);
+// Color Consts
+const uint32_t RED_COLOR = strip.Color(255, 0, 0);
+const uint32_t GREEN_COLOR = strip.Color(0, 255, 0);
+const uint32_t BLUE_COLOR = strip.Color(0, 0, 255);
+const uint32_t WHITE_COLOR = strip.Color(0, 0, 0);
 
-long led_iteration_interval = 100;
-long current_time;
-long start_time;
+// Time vars for concurrence running
+long currentTime;
+long startTime;
 
+int const levelIntervalMultipler = 50;
+long ledIterationInterval = 200;
+
+// The Game's States
 int currentState;
 const int startState = 0;
 const int inGameState = 1;
 const int stageCompleteState = 2;
 const int lossingState = 3;
 const int winnigState = 4;
+const int winnigGame = 6;
 const int validationState = 5;
-const int finalLevel = 3;
 
-int currentLed = 0;
+// Game Level settings
+const int finalLevel = 2;
+int currentGameLevel = 0;
+// Start a game button variable
 int toStartAGame;
-int targetLed = 4;
-int currentGameLevel = 1;
 
-char* songToPlay;
-long songNextIterationTime;
-boolean toneIsUp= false;
-
-uint32_t RED_COLOR = strip.Color(255, 0, 0);
-uint32_t GREEN_COLOR = strip.Color(0, 255, 0);
-uint32_t BLUE_COLOR = strip.Color(0, 0, 255); 
-uint32_t WHITE_COLOR = strip.Color(0, 0, 0); 
+// Game Led vars
+int currentLed = 0;
+const int targetLed = 4;
 
 // IR settings
-const int RECV_PIN = 11;
+const int REMOTE_NOISE_NUMEBR = 4294967295;
 IRrecv irrecv(RECV_PIN);
-decode_results results; 
+decode_results results;
 
-// StarWar song indicates a correct attempt
+
+// in game song
 char *songStarWars = "StarWars:d=4,o=5,b=45:32p,32f#,32f#,32f#,8b.,8f#.6,32e6,32d#6,32c#6,8b.6,16f#.6,32e6,32d#6,32c#6,8b.6,16f#.6,32e6,32d#6,32e6";
+// losing a game song
+char *losingSong = "lose:d=4,o=5,b=100:c.,c,8c,c.,d#,8d,d,8c,c,8c,2c.";
+// winning a level song
+char *winnigStateSong = "Agadoo:d=4,o=5,b=125:8b,8g#,e,8e,8e,e,8e,8e,8e,8e,8d#,8e,f#,8a,8f#,d#,8d#,8d#,d#,8d#,8d#,8d#,8d#,8c#,8d#,e";
+// winnig a game song
+char *winnigGameSong = "Macarena:d=4,o=5,b=180:f,8f,8f,f,8f,8f,8f,8f,8f,8f,8f,8a,8c,8c,f,8f,8f,f,8f,8f,8f,8f,8f,8f,8d,8c,p,f,8f,8f,f,8f,8f,8f,8f,8f,8f,8f,8a,p,2c.6,a,8c6,8a,8f,p,2p";
 
 void setup() {
-        
-  // put your setup code here, to run once:
-    pinMode(BUTTON_PIN, INPUT);
-    pinMode(RED_LED_PIN, OUTPUT);
-    pinMode(GREEN_LED_PIN, OUTPUT);
-    strip.begin();
-    strip.show();
-    Serial.begin(9600);
-    start_time = millis() + led_iteration_interval;
-    strip.setPixelColor(targetLed, GREEN_COLOR); 
-    strip.show();
-    songToPlay = set_rtttl(songStarWars);
-    irrecv.enableIRIn(); // Start the receiver
-    currentState = startState;
+  pinMode(BUTTON_PIN, INPUT);
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
+  strip.begin();
+  strip.show();
+  Serial.begin(9600);
+  startTime = millis() + ledIterationInterval;
+  strip.show();
+  player.set_rtttl(songStarWars);
+  currentState = startState;
 }
 
 void loop() {
-  
-  current_time = millis();
+
+  currentTime = millis();
   toStartAGame = digitalRead(BUTTON_PIN);
-  
-  switch(currentState) {
+  // State Machine 
+  switch (currentState) {
     case startState:
-        if( toStartAGame == HIGH){
-          digitalWrite(RED_LED_PIN, LOW);  
-          digitalWrite(GREEN_LED_PIN, HIGH);
-          currentState = inGameState;
-        }else{
-          digitalWrite(RED_LED_PIN, HIGH);  
-          digitalWrite(GREEN_LED_PIN, LOW);
-        }
-        break;
-        
-     case inGameState:
-        // pressing any button on the remote.
-        if (irrecv.decode(&results)) {
-          digitalWrite(RED_LED_PIN, HIGH); 
-          irrecv.resume(); // Receive the next value
-          currentState = validationState;
-        }
-        //Song iterations
-        if(current_time - songNextIterationTime > 0){
-          if(toneIsUp){
-            noTone(SPEAKER_PIN);
-          }
-          if(!(*songToPlay)){
-            restSongVars();
-            songToPlay = set_rtttl(songStarWars);
-          }
-          playSongIteration(songToPlay);  
-        }
-        if( abs(current_time - start_time) > led_iteration_interval){
-          ledStripIteration(BLUE_COLOR);
-          start_time = millis() + led_iteration_interval; 
-        }              
-        break;
-      case validationState:
-        if (targetLed == currentLed - 1 && currentGameLevel < finalLevel){
-          currentGameLevel++;
-          currentState = startState;
-        }
-        break;
+      startStateFunc();
+      break;
+    case inGameState:
+      inGameStateFunc();
+      break;
+    case validationState:
+      validatioStateFunc();
+      break;
+    case lossingState:
+      losingStateFunc();
+      break;
+    case winnigState:
+      winnigStateFunc();
+      break;
+    case winnigGame:
+      winnigGameStateFunc();
+      break;
   }
 }
-
-
-void ledStripIteration(uint32_t inputColor){
-  
-    if( currentLed == 0){
-      strip.setPixelColor(STRIP_LENGTH -1, WHITE_COLOR);  
-    }else if(currentLed - 1 == targetLed){
-       strip.setPixelColor(currentLed -1, GREEN_COLOR);
-    }
-    else{
-      strip.setPixelColor(currentLed -1, WHITE_COLOR);  
-    }
-    strip.show();
-    strip.setPixelColor(currentLed, inputColor);  
-    strip.show();
-    currentLed++;
-    if( currentLed > STRIP_LENGTH -1){
-      currentLed = 0;
-    }
-}
-
-
-
 
 /*
- * This is the RTTL Part
- * We used the code from the following link
- * http://www.instructables.com/id/Aruino-Tone-RTTL-Player/
- */
-
-
-#define OCTAVE_OFFSET 0
-// These values can also be found as constants in the Tone library (Tone.h)
-int notes[] = { 0,
-262, 277, 294, 311, 330, 349, 370, 392, 415, 440, 466, 494,
-523, 554, 587, 622, 659, 698, 740, 784, 831, 880, 932, 988,
-1047, 1109, 1175, 1245, 1319, 1397, 1480, 1568, 1661, 1760, 1865, 1976,
-2093, 2217, 2349, 2489, 2637, 2794, 2960, 3136, 3322, 3520, 3729, 3951
-};
- byte default_dur = 4;
- byte default_oct = 6;
- int bpm = 63;
- int num;
- long wholenote;
- long duration;
- byte note;
- byte scale;
-
-void restSongVars(){
- default_dur = 4;
- default_oct = 6;
- bpm = 63;
- num = 0;
- wholenote = 0;
- duration = 0;
- note = 0;
- scale = 0;
-}
-#define isdigit(n) (n >= '0' && n <= '9')
-
-char* set_rtttl(char *p)
-{
-  // format: d=N,o=N,b=NNN:
-  // find the start (skip name, etc)
-
-  while(*p != ':') p++;    // ignore name
-  p++;                     // skip ':'
-
-  // get default duration
-  if(*p == 'd')
-  {
-    p++; p++;              // skip "d="
-    num = 0;
-    while(isdigit(*p))
-    {
-      num = (num * 10) + (*p++ - '0');
-    }
-    if(num > 0) default_dur = num;
-    p++;                   // skip comma
+  only Red led is on indicates first state 
+  waiting for the user to press the start game
+  button
+*/ 
+void startStateFunc() {
+  // Press the button to start the game
+  if (toStartAGame == HIGH) {
+    digitalWrite(RED_LED_PIN, LOW);
+    digitalWrite(GREEN_LED_PIN, HIGH);
+    strip.setPixelColor(targetLed, GREEN_COLOR);
+    currentState = inGameState;
+    irrecv.enableIRIn(); // Start the receiver
+  } 
+  else if(digitalRead(RED_LED_PIN) != HIGH ||
+          digitalRead(GREEN_LED_PIN) != LOW){
+            
+    digitalWrite(RED_LED_PIN, HIGH);
+    digitalWrite(GREEN_LED_PIN, LOW);
   }
-
-  // get default octave
-  if(*p == 'o')
-  {
-    p++; p++;              // skip "o="
-    num = *p++ - '0';
-    if(num >= 3 && num <=7) default_oct = num;
-    p++;                   // skip comma
-  }
-
-  // get BPM
-  if(*p == 'b')
-  {
-    p++; p++;              // skip "b="
-    num = 0;
-    while(isdigit(*p))
-    {
-      num = (num * 10) + (*p++ - '0');
-    }
-    bpm = num;
-    p++;                   // skip colon
-  }
-
-  // BPM usually expresses the number of quarter notes per minute
-  wholenote = (60 * 1000L / bpm) * 4;  // this is the time for whole note (in milliseconds)
-  num = 0;
-  return p;
 }
 
-void playSongIteration(char *p){
-    num = 0;
-    while(isdigit(*p))
-    {
-      num = (num * 10) + (*p++ - '0');
+/*
+  Play the game music (star wars) and run 
+  the runner.
+  Wait for the user to press any key on the remote.
+*/ 
+void inGameStateFunc() {
+  // pressing any button on the remote.
+  if (irrecv.decode(&results)) {
+    Serial.println(results.value);
+    if (results.value != REMOTE_NOISE_NUMEBR) {
+      digitalWrite(RED_LED_PIN, HIGH);
+      irrecv.resume(); // Receive the next value
+      currentState = validationState;
+      noTone(SPEAKER_PIN);
+      return;
     }
-    if(num) duration = wholenote / num;
-    else duration = wholenote / default_dur;  // we will need to check if we are a dotted note after
-    // first, get note duration, if available
-    // now get the note
-    note = 0;
-
-    switch(*p)
-    {
-      case 'c':
-        note = 1;
-        break;
-      case 'd':
-        note = 3;
-        break;
-      case 'e':
-        note = 5;
-        break;
-      case 'f':
-        note = 6;
-        break;
-      case 'g':
-        note = 8;
-        break;
-      case 'a':
-        note = 10;
-        break;
-      case 'b':
-        note = 12;
-        break;
-      case 'p':
-      default:
-        note = 0;
+    irrecv.resume(); // Receive the next value
+  }
+  //Song iterations
+  if (currentTime > player.songNextIterationTime) {
+    if (player.toneIsUp) {
+      noTone(SPEAKER_PIN);
     }
-    p++;
-
-    // now, get optional '#' sharp
-    if(*p == '#')
-    {
-      note++;
-      p++;
+    if (!(*player.songToPlay)) {
+      player.set_rtttl(songStarWars);
     }
-
-    // now, get optional '.' dotted note
-    if(*p == '.')
-    {
-      duration += duration/2;
-      p++;
-    }
-  
-    // now, get scale
-    if(isdigit(*p))
-    {
-      scale = *p - '0';
-      p++;
-    }
-    else
-    {
-      scale = default_oct;
-    }
-
-    scale += OCTAVE_OFFSET;
-
-    if(*p == ',')
-      p++;       // skip comma for next note (or we may be at the end)
-
-    // now play the note
-    if(note)
-    {
-      tone(SPEAKER_PIN, notes[(scale - 4) * 12 + note]);
-      toneIsUp = true;
-    }
-    songNextIterationTime = millis() + duration;
-    songToPlay = p++;
+    player.playSongIteration();
+  }
+  if (currentTime > startTime) {
+    ledStripIteration(BLUE_COLOR);
+    startTime = millis() + ledIterationInterval - (currentGameLevel * levelIntervalMultipler);
+  }
 }
+
+/*
+  Validate where the user stoped the runner
+  and sets next state. 
+*/ 
+void validatioStateFunc() {
+  if (targetLed == currentLed - 1 && currentGameLevel <= finalLevel) {
+    if (currentGameLevel == finalLevel) {
+      // user won last level
+      // won the game!!!
+      currentState = winnigGame;
+      player.set_rtttl(winnigGameSong);
+      return;
+    } else {
+      currentState = winnigState;
+    }
+  } else {
+    currentState = lossingState;
+  }
+}
+
+/*
+  Play lossing level song and turn strip of leds to red. 
+*/ 
+void losingStateFunc() {
+  setAllLedStripToColor(RED_COLOR);
+  player.play_rtttl(losingSong);
+  setAllLedStripToColor(WHITE_COLOR);
+  currentGameLevel = 0;
+  currentState = startState;
+}
+
+/*
+  Play winnig level song and turn strip of leds to green. 
+*/ 
+void winnigStateFunc() {
+  setAllLedStripToColor(GREEN_COLOR);
+  player.play_rtttl(winnigStateSong);
+  setAllLedStripToColor(WHITE_COLOR);
+  currentState = inGameState;
+  currentGameLevel++;
+}
+
+/*
+  Play winnig game song and at the same time
+  run all leds green.
+  set state to start state.
+*/ 
+void winnigGameStateFunc() {
+  //Song iterations
+  currentTime = millis();
+  if (currentTime > player.songNextIterationTime) {
+    if (player.toneIsUp) {
+      noTone(SPEAKER_PIN);
+    }
+    if (!(*player.songToPlay)) {
+      currentGameLevel = 0;
+      currentState = startState;
+      setAllLedStripToColor(GREEN_COLOR);
+      delay(1000);
+      setAllLedStripToColor(WHITE_COLOR);
+      return;
+    }
+    player.playSongIteration();
+  }
+  // give priorty to song iteration
+  if (currentTime < player.songNextIterationTime && currentTime >  startTime)
+  {
+    ledStripIteration(GREEN_COLOR);
+    startTime = millis() + winnig_ledIterationInterval;
+  }
+}
+
+/*
+  This is an iterator function.
+  The function moves turn the next led on 
+  and past led off.
+  We used it to implement the runner.
+*/ 
+void ledStripIteration(uint32_t inputColor) {
+
+  if ( currentLed == 0) {
+    strip.setPixelColor(STRIP_LENGTH - 1, WHITE_COLOR);
+  } else if (currentLed - 1 == targetLed) {
+    strip.setPixelColor(currentLed - 1, GREEN_COLOR);
+  }
+  else {
+    strip.setPixelColor(currentLed - 1, WHITE_COLOR);
+  }
+  strip.show();
+  strip.setPixelColor(currentLed, inputColor);
+  strip.show();
+  currentLed++;
+  if ( currentLed > STRIP_LENGTH - 1) {
+    currentLed = 0;
+  }
+}
+
+/*
+  Set all strip to a given color
+*/ 
+void setAllLedStripToColor(uint32_t inputColor) {
+  for ( int i = 0; i < STRIP_LENGTH; i++) {
+    strip.setPixelColor(i, inputColor);
+    strip.show();
+  }
+}
+
 
